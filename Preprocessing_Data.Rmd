@@ -1,0 +1,35 @@
+---
+title: "Preprocessing HU Data"
+author: "TJM Fulweiler"
+date: "May 23, 2017"
+output: html_document
+---
+
+Data for the Maumee River was downloaded (23 May 2017) from the National Center for Water Quality Research (NCWQR). NCWQR data is available in Microsoft xlsx format, it has been converted to csv.
+```{r}
+maumee <- read.csv("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/HU_data/MaumeeData_r_20170523.csv")
+
+# The imported data requires preprocessing before load estimates are generated.
+# 1.) change the date col to an R format
+
+maumee$Datetime..date.and.time.of.sample.collection.  = strptime(maumee$Datetime..date.and.time.of.sample.collection., format="%m/%d/%Y %H:%M", tz="EST")
+
+# 2.) the days since previous sample, sample time window, futures, and months cols are now no longer needed because R can calc:
+# maumee$Datetime..date.and.time.of.sample.collection.[1]-maumee$Datetime..date.and.time.of.sample.collection.[2]
+
+maumee = maumee[,-c(2,3,14,15)]
+
+# 3.) Flow is in cubic feet per second, this will be changed to 10^6 cubic m per day (this is done to simplify nutrient load estimates that will take place later)
+
+maumee$Flow..CFS = maumee$Flow..CFS*(0.0283168)*(60*60*24)*(10^-6)
+
+# 4.) The units now are converted to ug/l (for suspended solids) and umol/l (for dissolved nutrients)
+
+maumee$SS..mg.L..suspended.solids. = maumee$SS..mg.L..suspended.solids. * 1000
+maumee$TP..mg.L.as.P = maumee$TP..mg.L.as.P * (1/1000) * (1/30.973762) * 10^6
+maumee$SRP..mg.L..as.P = maumee$SRP..mg.L..as.P * (1/1000) * (1/30.973762) * 10^6
+
+
+```
+
+
