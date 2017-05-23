@@ -4,6 +4,7 @@ author: "TJM Fulweiler"
 date: "May 23, 2017"
 output: html_document
 ---
+# update on GitHub
 
 Data for the Maumee River was downloaded (23 May 2017) from the National Center for Water Quality Research (NCWQR). NCWQR data is available in Microsoft xlsx format, it has been converted to csv.
 ```{r}
