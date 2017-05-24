@@ -62,9 +62,3 @@ write.csv(maumee_1,"C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/HU_data/Ma
 
 ```
 
-```{r}
-plot(maumee_1$flow,maumee_1$tkn*maumee_1$flow, pch=".")
-
-year()
-
-```
