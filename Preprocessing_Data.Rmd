@@ -4,7 +4,7 @@ author: "TJM Fulweiler"
 date: "May 23, 2017"
 output: html_document
 ---
-# update on GitHub
+
 
 Data for the Maumee River was downloaded (23 May 2017) from the National Center for Water Quality Research (NCWQR). NCWQR data is available in Microsoft xlsx format, it has been converted to csv.
 ```{r}
@@ -20,17 +20,51 @@ maumee$Datetime..date.and.time.of.sample.collection.  = strptime(maumee$Datetime
 
 maumee = maumee[,-c(2,3,14,15)]
 
-# 3.) Flow is in cubic feet per second, this will be changed to 10^6 cubic m per day (this is done to simplify nutrient load estimates that will take place later)
+# 3.) no sample is indicated as "-9", change these to "NA"
+
+for (i in 1:length(maumee[,1])){maumee[i,which(maumee[i,] == -9)] = NA}
+rm(i)
+
+# 4.) Flow is in cubic feet per second, this will be changed to 10^6 cubic m per day (this is done to simplify nutrient load estimates that will take place later)
 
 maumee$Flow..CFS = maumee$Flow..CFS*(0.0283168)*(60*60*24)*(10^-6)
 
-# 4.) The units now are converted to ug/l (for suspended solids) and umol/l (for dissolved nutrients)
+# 5.) The units now are converted to ug/l (for suspended solids) and umol/l (for dissolved nutrients)
 
 maumee$SS..mg.L..suspended.solids. = maumee$SS..mg.L..suspended.solids. * 1000
 maumee$TP..mg.L.as.P = maumee$TP..mg.L.as.P * (1/1000) * (1/30.973762) * 10^6
 maumee$SRP..mg.L..as.P = maumee$SRP..mg.L..as.P * (1/1000) * (1/30.973762) * 10^6
+maumee$NO23..mg.L.as.N = maumee$NO23..mg.L.as.N * (1/1000) * (1/14.0067) * 10^6
+maumee$TKN..mg.L..Total.Kjeldahl.nitrogen. = maumee$TKN..mg.L..Total.Kjeldahl.nitrogen.* (1/1000) * (1/14.0067) * 10^6
+# maumee$Chloride..mg.L = maumee$Chloride..mg.L * (1/1000) * (1/35.453) * 10^6
+maumee$Sulfate..mg.L = maumee$Sulfate..mg.L * (1/1000) * (1/96.06) * 10^6
+maumee$Silica..mg.L = maumee$Silica..mg.L * (1/1000) * (1/60.08) * 10^6
 
+# Cl and cond are not required for this project, cut out cols, potential use later
+
+maumee = maumee[,-c(8,11)]
+
+# 6.) simplify col names
+colnames(maumee) = c("date","flow","ss","tp","srp","no23","tkn","cl","so4","silica","cond")
+
+# 7.) find dates with repeated measures, mean parameters on those dates
+
+maumee$dates = as.Date.character(format(maumee$date,"%m/%d/%Y"), format="%m/%d/%Y")
+
+maumee_1 = aggregate(maumee[,c(2:9)],by=list(maumee[,10]),mean)
+colnames(maumee_1) = c("date","flow","ss","tp","srp","no23","tkn","so4","silica")
+
+# 8.) add col for year
+
+maumee_1$year = as.numeric(format(maumee_1$date, format="%Y"))
+
+write.csv(maumee_1,"C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/HU_data/MaumeeData_r_20170523_processed.csv")
 
 ```
 
+```{r}
+plot(maumee_1$flow,maumee_1$tkn*maumee_1$flow, pch=".")
 
+year()
+
+```
