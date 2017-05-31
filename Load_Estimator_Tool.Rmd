@@ -1,0 +1,429 @@
+---
+title: "Load_Estimator"
+author: "TJM Fulweiler"
+date: "May 24, 2017"
+output: html_document
+---
+
+```{r}
+
+
+
+
+# on River data use Richards, 1998; Rou, 2006 Beale's formula on stratified and non straified data, select the approach that generates normal data with the smallest SD possible.
+# when I mention Beales I am referring to an unbiased estimator I use to generate the year mass export or "flux" of each nutrient
+
+
+New_RIVERS_Fluxes <- function(conc_rivers) {
+  # conc data in uM/l, flow in 10^6 m3/d, fluxes in kmol/year
+  # find the nutrient flux for each year, each river, each nutrient
+  
+  full <- conc_rivers[,c("station","date","year","month","day","Ammonium..uM.","Nitrate.nitrite..uM.","Phosphate..uM.","silica","flow")]
+  colnames(full) = c("station","date","year","month","day","nh4","no2_3","po4","sio2","flow")
+  
+  nuts = c("nh4","no2_3","po4","sio2") # these are my nutrients of interest, I pull these out as colnames to select individual nutrients from the larger dataset
+  nnuts = length(nuts)
+  stations <- unique(full$station) # stations are the rivers expressed as numbers
+  nstations <- length(stations)
+  results <- matrix(0,nrow=1,ncol=209) # this is the blank object I populate with my hopefully normally distributed results per station, per nutrient, per year
+  for(s in 1:nstations) {
+    station_index = which(full$station == stations[s])
+    
+    for(N in 1:nnuts) {
+      
+      nutrient_index = intersect(station_index,which(complete.cases(full[,nuts[N]])))
+      flow_index = intersect(station_index,which(complete.cases(full[,"flow"])))
+      years = unique(full[intersect(nutrient_index,flow_index),]$year)
+      nyears = length(years)
+      
+      print(paste("N=",N,"s=",s))
+      
+      for(y in 1:nyears){
+        # stratify the flow data into high and low & by high, medium, low, determine cut offs by spilting FLOW data on days when samples were taken
+        # keeping a minimum of 3 samples in the smallest split and testing to see if they are normal. 
+        
+        year_conc = intersect(nutrient_index,which(full$year == years[y]))
+        year_flow = intersect(flow_index,which(full$year == years[y]))
+        river.temp = full[year_conc,]
+        full.temp = full[year_flow,]
+        river.temp$flux = river.temp[,nuts[N]]*river.temp$flow
+        
+        # first is the non-stratified Beales to combined results in case non-stratified does a better job estimating flux.
+        
+        temp.results = matrix(0, nrow=1, ncol=209)
+        
+        # first col is stationm then nut, then the number of samples
+        temp.results[1,1] = stations[s]
+        temp.results[1,2] = years[y]
+        temp.results[1,3] = N
+        temp.results[1,4] = length(river.temp$flux)
+        
+        # 4th col a zero as there is no "high" or "low" sample #
+        # have a 0 if no flow strata 
+        temp.results[1,5] <- NA
+        temp.results[1,6] <- NA
+        temp.results[1,7] <- NA
+        temp.results[1,8] <- NA
+        # Beale's col = 9
+        qa=mean(full.temp$flow)
+        lo=mean(river.temp$flux)
+        qo=mean(river.temp$flow)
+        n=length(river.temp$flux)
+        bigN=length(full.temp$flow)
+        xi=river.temp$flow
+        yi=river.temp$flux
+        Slq=cov(xi,yi)
+        Sqq=var(xi)
+        
+        temp.results[1,9] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0) 
+        
+        
+        for (b in 10:209){
+          beale_ind <- sample(length(river.temp$flux),length(river.temp$flux), replace=T)
+          
+          
+          # beale's estimator bootstrapped col 10:509
+          qa=mean(full.temp$flow)
+          lo=mean(river.temp$flux[beale_ind])
+          qo=mean(river.temp$flow[beale_ind])
+          n=length(river.temp$flux[beale_ind])
+          bigN=length(full.temp$flow)
+          xi=river.temp$flow[beale_ind]
+          yi=river.temp$flux[beale_ind]
+          Slq=cov(xi,yi)
+          Sqq=var(xi)
+          
+          temp.results[1,b] <- round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)      
+        }
+        
+        # This is the point where I do the first stratification
+        # This divides flows strat high-low, only if there are at least 6 samples
+        
+        if(length(river.temp$flux) >= 6){
+          
+          segments = sort(unique(river.temp$flow))
+          nsegments = length(segments)
+          cuts = NULL
+          for (C in 3:(nsegments-3)){ # this is how I determine the strata, keeping at least three observations of conc in each strata
+            cuts = c(cuts,((segments[C+1]-segments[C])/2)+segments[C])
+          }
+          ncuts = length(cuts)
+          
+          #create temp holders for stratified results
+          low.results = matrix(0, nrow=ncuts, ncol=203)
+          high.results = matrix(0, nrow=ncuts, ncol=203)
+          for (c in 1:ncuts){
+            low.full.index = which(full.temp$flow <= cuts[c])
+            low.flux.index = which(river.temp$flow <= cuts[c])
+            
+            # start with code for low
+            # first value will be the number of low samples
+            low.results[c,1] = length(river.temp[low.flux.index,]$flux)
+            
+            # second value will be the cut-off flow
+            low.results[c,2] <- cuts[c]
+           
+            # Beale's col = 3
+            qa=mean(full.temp[low.full.index,]$flow)
+            lo=mean(river.temp[low.flux.index,]$flux)
+            qo=mean(river.temp[low.flux.index,]$flow)
+            n=length(river.temp[low.flux.index,]$flux)
+            bigN=length(full.temp[low.full.index,]$flow)
+            xi=river.temp[low.flux.index,]$flow
+            yi=river.temp[low.flux.index,]$flux
+            Slq=cov(xi,yi)
+            Sqq=var(xi)
+            
+            low.results[c,3] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)            
+            
+            for (b in 4:203){
+              beale_ind <- sample(low.flux.index,length(low.flux.index), replace=T)
+              # beale's estimator bootstrapped col 4:503
+              qa=mean(full.temp[low.full.index,]$flow)
+              lo=mean(river.temp$flux[beale_ind])
+              qo=mean(river.temp$flow[beale_ind])
+              n=length(river.temp$flux[beale_ind])
+              bigN=length(full.temp[low.full.index,]$flow)
+              xi=river.temp$flow[beale_ind]
+              yi=river.temp$flux[beale_ind]
+              Slq=cov(xi,yi)
+              Sqq=var(xi)
+              
+              low.results[c,b] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)   }         
+            
+            
+            high.flux.index = which(river.temp$flow > cuts[c])
+            high.full.index = which(full.temp$flow > cuts[c])
+            
+            # now code for high
+            # first value will be the number of low samples
+            high.results[c,1] = length(river.temp[high.flux.index,]$flux)
+            
+            # second value will be the cut-off flow
+            high.results[c,2] <- cuts[c]
+            
+            # Beale's col = 3
+            qa=mean(full.temp[high.full.index,]$flow)
+            lo=mean(river.temp[high.flux.index,]$flux)
+            qo=mean(river.temp[high.flux.index,]$flow)
+            n=length(river.temp[high.flux.index,]$flux)
+            bigN=length(full.temp[high.full.index,]$flow)
+            xi=river.temp[high.flux.index,]$flow
+            yi=river.temp[high.flux.index,]$flux
+            Slq=cov(xi,yi)
+            Sqq=var(xi)
+            
+            high.results[c,3] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)            
+            
+            
+            for (b in 4:203){
+              beale_ind <- sample(high.flux.index,length(high.flux.index), replace=T)
+              
+              
+              # beale's estimator bootstrapped col 4:503
+              qa=mean(full.temp[high.full.index,]$flow)
+              lo=mean(river.temp$flux[beale_ind])
+              qo=mean(river.temp$flow[beale_ind])
+              n=length(river.temp$flux[beale_ind])
+              bigN=length(full.temp[high.full.index,]$flow)
+              xi=river.temp$flow[beale_ind]
+              yi=river.temp$flux[beale_ind]
+              Slq=cov(xi,yi)
+              Sqq=var(xi)
+              
+              high.results[c,b] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)    }
+            
+          } 
+          combined.results = matrix(0, nrow = length(low.results[,1]), ncol = 209)
+          combined.results[,1] = stations[s]
+          combined.results[,2] = years[y]
+          combined.results[,3] = N
+          combined.results[,4] = low.results[,1]
+          combined.results[,5] = NA
+          combined.results[,6] = high.results[,1]
+          combined.results[,7] = low.results[,2]
+          combined.results[,8] = NA
+          combined.results[,9] = low.results[,3]+high.results[,3]
+          combined.results[,c(10:209)] = low.results[,c(4:203)]+high.results[,c(4:203)]
+          combined.results = rbind(combined.results,temp.results)  #this adds the 2 strata results to the non-strata data    
+        }
+        
+        #This divides flows strat high-med-low, only if there are at least 10 samples
+        if(length(river.temp$flux) >= 10){
+          
+          segs = NULL
+          for (f in 1:nsegments-1){
+            segs = c(segs,((segments[f+1]-segments[f])/2)+segments[f])
+          }
+          
+          nsegs = length(segs)
+          strats = min_perm(nsegs) # here is where I determine the cut offs for high, med, low strata by using the function in the beginning of the code
+          nstrats = dim(strats)[1]
+          
+          #create temp holders for stratified results
+          low.strat = matrix(0, nrow=dim(strats)[1], ncol=203)
+          med.strat = matrix(0, nrow=dim(strats)[1], ncol=203)
+          high.strat = matrix(0, nrow=dim(strats)[1], ncol=203)
+          for (z in 1:nstrats){
+            low.full.strat = which(full.temp$flow <= segs[strats[z,1]])
+            low.flux.strat = which(river.temp$flow <= segs[strats[z,1]])
+            
+            # start with code for low
+            # first value will be the number of low samples
+            low.strat[z,1] = length(river.temp[low.flux.strat,]$flux)
+            
+            # second value will be the cut-off flow
+            low.strat[z,2] <- segs[strats[z,1]]
+            
+            # Beale's col = 3
+            qa=mean(full.temp[low.full.strat,]$flow)
+            lo=mean(river.temp[low.flux.strat,]$flux)
+            qo=mean(river.temp[low.flux.strat,]$flow)
+            n=length(river.temp[low.flux.strat,]$flux)
+            bigN=length(full.temp[low.full.strat,]$flow)
+            xi=river.temp[low.flux.strat,]$flow
+            yi=river.temp[low.flux.strat,]$flux
+            Slq=cov(xi,yi)
+            Sqq=var(xi)
+            
+            low.strat[z,3] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)            
+            
+            for (b in 4:203){
+              beale_ind <- sample(low.flux.strat,length(low.flux.strat), replace=T)
+              # beale's estimator bootstrapped col 4:503
+              qa=mean(full.temp[low.full.strat,]$flow)
+              lo=mean(river.temp$flux[beale_ind])
+              qo=mean(river.temp$flow[beale_ind])
+              n=length(river.temp$flux[beale_ind])
+              bigN=length(full.temp[low.full.strat,]$flow)
+              xi=river.temp$flow[beale_ind]
+              yi=river.temp$flux[beale_ind]
+              Slq=cov(xi,yi)
+              Sqq=var(xi)
+              
+              low.strat[z,b] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)    }       
+            
+            
+            med.full.strat = intersect(which(full.temp$flow > segs[strats[z,1]]),which(full.temp$flow < segs[strats[z,2]]))
+            med.flux.strat = intersect(which(river.temp$flow > segs[strats[z,1]]),which(river.temp$flow < segs[strats[z,2]]))
+            
+            # now med
+            # first value will be the number of med conc samples
+            med.strat[z,1] = length(river.temp[med.flux.strat,]$flux)
+            
+            # second value will be the 1st cut-off flow
+            med.strat[z,2] <- segs[strats[z,1]]
+            
+            
+            # Beale's col = 3
+            qa=mean(full.temp[med.full.strat,]$flow)
+            lo=mean(river.temp[med.flux.strat,]$flux)
+            qo=mean(river.temp[med.flux.strat,]$flow)
+            n=length(river.temp[med.flux.strat,]$flux)
+            bigN=length(full.temp[med.full.strat,]$flow)
+            xi=river.temp[med.flux.strat,]$flow
+            yi=river.temp[med.flux.strat,]$flux
+            Slq=cov(xi,yi)
+            Sqq=var(xi)
+            
+            med.strat[z,3] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)            
+            
+            for (b in 4:203){
+              beale_ind <- sample(med.flux.strat,length(med.flux.strat), replace=T)
+              # beale's estimator bootstrapped col 4:503
+              qa=mean(full.temp[med.full.strat,]$flow)
+              lo=mean(river.temp$flux[beale_ind])
+              qo=mean(river.temp$flow[beale_ind])
+              n=length(river.temp$flux[beale_ind])
+              bigN=length(full.temp[med.full.strat,]$flow)
+              xi=river.temp$flow[beale_ind]
+              yi=river.temp$flux[beale_ind]
+              Slq=cov(xi,yi)
+              Sqq=var(xi)
+              
+              med.strat[z,b] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)   }         
+            
+            
+            high.flux.strat = which(river.temp$flow >= segs[strats[z,2]])
+            high.full.strat = which(full.temp$flow >= segs[strats[z,2]])
+            
+            # now code for high
+            # first value will be the number of high samples
+            high.strat[z,1] = length(river.temp[high.flux.strat,]$flux)
+            
+            # second value will be the cut-off flow
+            high.strat[z,2] <- segs[strats[z,2]]
+            
+            # Beale's col = 3
+            qa=mean(full.temp[high.full.strat,]$flow)
+            lo=mean(river.temp[high.flux.strat,]$flux)
+            qo=mean(river.temp[high.flux.strat,]$flow)
+            n=length(river.temp[high.flux.strat,]$flux)
+            bigN=length(full.temp[high.full.strat,]$flow)
+            xi=river.temp[high.flux.strat,]$flow
+            yi=river.temp[high.flux.strat,]$flux
+            Slq=cov(xi,yi)
+            Sqq=var(xi)
+            
+            high.strat[z,3] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0)            
+            
+            
+            for (b in 4:203){
+              beale_ind <- sample(high.flux.strat,length(high.flux.strat), replace=T)
+              
+              
+              # beale's estimator bootstrapped col 4:503
+              qa=mean(full.temp[high.full.strat,]$flow)
+              lo=mean(river.temp$flux[beale_ind])
+              qo=mean(river.temp$flow[beale_ind])
+              n=length(river.temp$flux[beale_ind])
+              bigN=length(full.temp[high.full.strat,]$flow)
+              xi=river.temp$flow[beale_ind]
+              yi=river.temp$flux[beale_ind]
+              Slq=cov(xi,yi)
+              Sqq=var(xi)
+              
+              high.strat[z,b] = round((lo*(qa/qo)*((1+((1/n)-(1/bigN))*(Slq/(lo*qo)))/(1+((1/n)-(1/bigN))*(Sqq/(qo^2)))))*bigN,0) }   
+            
+          }
+          
+          
+          # now combine the 3 level stratified results
+          
+          
+          strat.results = matrix(0, nrow = length(low.strat[,1]), ncol = 209)
+          strat.results[,1] = stations[s]
+          strat.results[,2] = years[y]
+          strat.results[,3] = N
+          strat.results[,4] = low.strat[,1]
+          strat.results[,5] = med.strat[,1]
+          strat.results[,6] = high.strat[,1]
+          strat.results[,7] = low.strat[,2]
+          strat.results[,8] = high.strat[,2]
+          strat.results[,9] = low.strat[,3]+med.strat[,3]+high.strat[,3]
+          strat.results[,c(10:209)] = low.strat[,c(4:203)]+med.strat[,c(4:203)]+high.strat[,c(4:203)]
+          
+          combined.results = rbind(combined.results,strat.results) # this add the 3 strata data to the data.frame that has the non & 2 strata data
+        }
+        
+        
+        # I want to pick the flow stratification (or non) set that generates estimates that are normal, 
+        # then compare across these and take the one with the smallest sd
+
+library("LambertW")     
+        
+        # the selection object has one col of p-values and one col of sd's
+        if(length(river.temp$flux) < 6){
+          selection = matrix(0,nrow = length(temp.results[,1]), ncol =2)
+          for (i in 1:length(selection[,1])) {
+            beta.true <- c(location = mean(temp.results[i,c(10:209)]), scale = sd(temp.results[i,c(10:209)]), df = sum(na.omit(temp.results[i,c(4:6)])))
+            selection[i,1] <- ks.test.t(temp.results[i,c(10:209)], beta.true)$p.value
+            selection[i,2] <- sd(temp.results[i,c(10:209)])
+          }}
+        
+        if(length(river.temp$flux) >= 6){
+          selection = matrix(0,nrow = length(combined.results[,1]), ncol =2)
+          for (i in 1:length(selection[,1])) {
+            beta.true <- c(location = mean(combined.results[i,c(10:209)]), scale = sd(combined.results[i,c(10:209)]), df = sum(na.omit(combined.results[i,c(4:6)])))
+            selection[i,1] <- ks.test.t(combined.results[i,c(10:209)], beta.true)$p.value
+            selection[i,2] <- sd(combined.results[i,c(10:209)])
+          }}
+        
+        holder = matrix(0, nrow=1, ncol = 209)
+        
+        # find which col of p-values are below our alpha
+        # use an alpha of 0.05 
+        if(any(selection[,1] >= 0.05)){
+          
+          selection.index1 = which(selection[,1] >= 0.05)
+          selection.index2 = which(selection[selection.index1,2] == min(selection[selection.index1,2]))
+          selection.index = selection.index1[selection.index2]
+          
+          holder[1,] = combined.results[selection.index,]
+        }
+        
+        # if none of the stratified or non-stratified estimates are normal, return non-strata Beales with "9999" in 7th col as indicator
+        
+        if(any(selection[,1] >= 0.05)==F){
+          
+          holder[1,] = temp.results
+          holder[1,7] = 9999
+        }
+        
+        results = rbind(results, holder) # combine the blank results object with the stratifcation results that fit best
+        
+      }
+      
+    }}
+  results = results[-1,] # remove first row of NA's
+  return(results)
+}
+
+
+
+
+
+
+
+
+```

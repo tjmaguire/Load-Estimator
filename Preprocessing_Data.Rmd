@@ -56,7 +56,6 @@ colnames(maumee_1) = c("date","flow","ss","tp","srp","no23","tkn","so4","silica"
 
 # 8.) add col for year
 
-maumee_1$year = as.numeric(format(maumee_1$date, format="%Y"))
 
 write.csv(maumee_1,"C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/HU_data/MaumeeData_r_20170523_processed.csv")
 

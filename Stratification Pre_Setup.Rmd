@@ -1,0 +1,110 @@
+---
+title: "Stratafications"
+author: "TJM Fulweiler"
+date: "May 31, 2017"
+output: html_document
+---
+
+```{r}
+
+# first, define the function I use to determine which observations go into which strata
+
+# this combinations function is from gtools
+combinations = function (n, r, v = 1:n, set = TRUE, repeats.allowed = FALSE) 
+{
+  if (mode(n) != "numeric" || length(n) != 1 || n < 1 || (n%%1) != 
+        0) 
+    stop("bad value of n")
+  if (mode(r) != "numeric" || length(r) != 1 || r < 1 || (r%%1) != 
+        0) 
+    stop("bad value of r")
+  if (!is.atomic(v) || length(v) < n) 
+    stop("v is either non-atomic or too short")
+  if ((r > n) & repeats.allowed == FALSE) 
+    stop("r > n and repeats.allowed=FALSE")
+  if (set) {
+    v <- unique(sort(v))
+    if (length(v) < n) 
+      stop("too few different elements")
+  }
+  v0 <- vector(mode(v), 0)
+  if (repeats.allowed) 
+    sub <- function(n, r, v) {
+      if (r == 0) 
+        v0
+      else if (r == 1) 
+        matrix(v, n, 1)
+      else if (n == 1) 
+        matrix(v, 1, r)
+      else rbind(cbind(v[1], Recall(n, r - 1, v)), Recall(n - 
+                                                            1, r, v[-1]))
+    }
+  else sub <- function(n, r, v) {
+    if (r == 0) 
+      v0
+    else if (r == 1) 
+      matrix(v, n, 1)
+    else if (r == n) 
+      matrix(v, 1, n)
+    else rbind(cbind(v[1], Recall(n - 1, r - 1, v[-1])), 
+               Recall(n - 1, r, v[-1]))
+  }
+  sub(n, r, v[1:n])
+}
+
+#this function is used in the stratified flow sampling
+min_perm <- function(b) { # this function defines all the perms that have min 3 obs in each group
+  a = floor(b/3) # a is the max number of strata you can have with 3 samples min in each strata
+  aa = combinations(a, b, repeats.allowed=T) #generate all the perms for "a" groups
+  bb = matrix(NA,nrow = dim(aa)[1],ncol = b) # create an empty vector to hold perms that have at least three in each group
+  groups = list(NULL) # what are the stratas 
+  for(j in 1:a){
+  groups[j] = list(seq(1:j))
+  }
+  
+  ee = NULL # keep track of how many strata perms per strata
+  bb = NULL # keep track of the strata perms themselves
+  for (h in 1:dim(aa)[1]){
+      for (g in 1:a){
+        if(suppressWarnings(all(unique(aa[h,]) == unique(groups[[g]])))){ # is this combo one of our strata we want?
+        dum = NULL
+        for (i in 1:length(unique(aa[h,]))){
+        dum = c(dum,length(which(aa[h,] == i))>=3)} # does each member of the strata have at least 3 samples
+          if(all(dum)){
+          bb = c(bb,h)
+          ee = c(ee,g)}
+      }}}
+bb=matrix(aa[bb,],nrow=length(bb),ncol=b)
+
+results <- vector("list", a)
+for (s in 1:a){
+  if(s==1){
+    results[[s]]$strata = max(dim(bb)[2])
+  } else {
+  dum = matrix(bb[which(ee == s),],nrow=length(which(ee == s)),ncol=b)
+  results[[s]]$strata= matrix(NA,nrow=length(which(ee == s)),ncol=s-1)
+  for (t in 1:length(which(ee == s))){
+    dum2 = NULL
+    for (u in 1:(s-1)){
+    dum2 = c(dum2, max(which(dum[t,] == u)))
+      }
+    results[[s]]$strata[t,] = dum2
+    }}}
+  
+  return(results)
+}
+
+
+# I want a list object with all the possible stratification setups for 3:100 samples, this would take a very long time on a normal labtop/desktop and must be sent to computer cluster, however the object it returns will not be too large in size
+
+
+results <- vector("list", 98)
+for(x in 3:100){
+results[[x]] = min_perm(x)
+}
+
+save.image("strata_3_to_100.RData")
+
+
+
+```
