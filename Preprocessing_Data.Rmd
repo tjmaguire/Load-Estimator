@@ -45,7 +45,7 @@ maumee$Silica..mg.L = maumee$Silica..mg.L * (1/1000) * (1/60.08) * 10^6
 maumee = maumee[,-c(8,11)]
 
 # 6.) simplify col names
-colnames(maumee) = c("date","flow","ss","tp","srp","no23","tkn","cl","so4","silica","cond")
+colnames(maumee) = c("date","flow","ss","tp","srp","no23","tkn","so4","silica")
 
 # 7.) find dates with repeated measures, mean parameters on those dates
 

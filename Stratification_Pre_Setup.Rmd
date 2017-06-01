@@ -97,10 +97,13 @@ for (s in 1:a){
 
 # I want a list object with all the possible stratification setups for 3:100 samples, this would take a very long time on a normal labtop/desktop and must be sent to computer cluster, however the object it returns will not be too large in size
 
+```
 
-results <- vector("list", 98)
-for(x in 3:100){
-results[[x]] = min_perm(x)
+This chunk is different when run on the computer cluster, here just using 9,12,and 15 to design the rest of the code, more strata to come.
+```{r} 
+strata <- vector("list", 3)
+for(x in c(9,12,15)){
+strata[[x]] = min_perm(x)
 }
 
 save.image("strata_3_to_100.RData")
