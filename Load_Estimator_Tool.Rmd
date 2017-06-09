@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ```{r}
+#
 # on River data use Richards, 1998; Rou, 2006 Beale's formula on stratified and non straified data, select the approach that generates normal data with the smallest SD possible.
 # when I mention Beales I am referring to an unbiased estimator I use to generate the year mass export or "flux" of each nutrient
 
