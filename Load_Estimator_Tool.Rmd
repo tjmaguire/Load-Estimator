@@ -11,6 +11,8 @@ output: html_document
 # when I mention Beales I am referring to an unbiased estimator I use to generate the year mass export or "flux" of each nutrient
 
 library(RCurl)
+
+
 x <- getURL("https://raw.githubusercontent.com/tjmaguire/Load-Estimator/master/HU_data/MaumeeData_r_20170523_processed.csv")
 dat <- read.csv(text = x)
 dat <- dat[,-1]
@@ -86,8 +88,9 @@ load("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/strata_3_to_100.RData")
    results[[N]]$est[[i]]$ns_bias[,1] = unique(partial$year)
    results[[N]]$est[[i]]$ns_sd = matrix(NA,nrow=length(unique(partial$year)),ncol=2)
    results[[N]]$est[[i]]$ns_sd[,1] = unique(partial$year)
-   results[[N]]$est[[i]]$s_flow_strata = matrix(NA,nrow =length(unique(partial$year)),ncol = floor(samp_no/3))
-   results[[N]]$est[[i]]$s_flow_strata[,1] = unique(partial$year)
+   results[[N]]$est[[i]]$s_flow_strata = vector("list",floor(samp_no/3))
+   for (ii in 1:floor(samp_no/3)){
+   results[[N]]$est[[i]]$s_flow_strata[[ii]] = matrix(NA,nrow=length(unique(partial$year)),ncol = 1+ii)}
    results[[N]]$est[[i]]$s_hit_miss = matrix(NA,nrow =length(unique(partial$year)),ncol = 2)
    results[[N]]$est[[i]]$s_hit_miss[,1] = unique(partial$year)
    results[[N]]$est[[i]]$ns_hit_miss = matrix(NA,nrow =length(unique(partial$year)),ncol = 2)
@@ -97,7 +100,7 @@ load("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/strata_3_to_100.RData")
    years <- unique(as.numeric(partial$year))
    nyears = length(years)
   
-#   for(y in 1:nyears){ # within method:nutrient:year
+  for(y in 1:nyears){ # within method:nutrient:year
          
   year_index = which(partial$year == years[y])  # annual estimates one year at a time 
   results[[N]]$days_in_period[y,2] = length(year_index)
@@ -106,7 +109,7 @@ load("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/strata_3_to_100.RData")
   # within each year we need to take many random samples to define, first make temp objects to hold estimates
   
   ####
-  BIGN = 10 # this is the number of random resamples
+  BIGN = 10 # this is the number of random resamples for simulation
   ####
   simu = vector("list",3)
   names(simu) = c("beales","inter","linear")
@@ -120,12 +123,11 @@ load("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/strata_3_to_100.RData")
   simu[[i]]$ns_hit_miss = matrix(NA,nrow=BIGN,ncol=1)
   }
   
+
+ for (s in 1:BIGN){ # bootstrap the simulation
   partial_sample = partial[year_index,]
-  
-#  for (s in 1:BIGN){ # bootstrap the simulation
-    
   sample_index = sample(length(year_index),samp_no,replace = F)
-  partial_sample[-sample_index,nuts[N]] = NA
+  partial_sample[-c(sample_index),nuts[N]] = NA
   flow_cuts = sort(partial_sample[sample_index,2])
   
   temp_est = vector("list",length(strata[[samp_no]]))
@@ -148,23 +150,30 @@ load("C:/Users/Tim/Dropbox/Beales Method/Load-Estimator/strata_3_to_100.RData")
       temp_data = vector("list",length(strata_index))
       
 
-      for (ttt in 1:length(strata_index)){ # build temp data based on specific strata possibility
       
+   if(t == 1) {
+    ttt_index = seq(1:length(partial_sample$flow))
+    temp_data[[1]] = partial_sample[ttt_index,]
+
+   } else{
+      
+        for (ttt in 1:length(strata_index)){ # build temp data based on specific strata possibility
+          
    if(ttt == 1){
-     ttt_index = which(partial_sample[,2] <= flow_cuts[max(strata_index[[ttt]])])
-     temp_flow_cuts[[t]][tt,ttt] = flow_cuts[max(strata_index[[ttt]])]
+     ttt_index = which(partial_sample[,2] <= ((flow_cuts[max(strata_index[[ttt]])]+flow_cuts[min(strata_index[[(ttt+1)]])])/2))
+     temp_flow_cuts[[t]][tt,ttt] = ((flow_cuts[max(strata_index[[ttt]])]+flow_cuts[min(strata_index[[(ttt+1)]])])/2)
      } else if(ttt == length(strata_index)){
-       ttt_index = which(partial_sample[,2] >=     flow_cuts[min(strata_index[[ttt]])])
-       temp_flow_cuts[[t]][tt,ttt] = flow_cuts[min(strata_index[[ttt]])]
+       ttt_index = which(partial_sample[,2] >=     ((flow_cuts[min(strata_index[[ttt]])]+flow_cuts[max(strata_index[[(ttt-1)]])])/2))
+       temp_flow_cuts[[t]][tt,ttt] = NA
        } else {
-       ttt_index = intersect(which(partial_sample[,2] <= flow_cuts[max(strata_index[[ttt]])]),which(partial_sample[,2] >= flow_cuts[min(strata_index[[ttt]])]))
-       temp_flow_cuts[[t]][tt,ttt] = flow_cuts[max(strata_index[[ttt]])]
+       ttt_index = intersect(which(partial_sample[,2] <= ((flow_cuts[max(strata_index[[ttt]])]+flow_cuts[min(strata_index[[(ttt+1)]])])/2)),which(partial_sample[,2] >= ((flow_cuts[min(strata_index[[ttt]])]+flow_cuts[max(strata_index[[(ttt-1)]])])/2)))
+       temp_flow_cuts[[t]][tt,ttt] = ((flow_cuts[max(strata_index[[ttt]])]+flow_cuts[min(strata_index[[(ttt+1)]])])/2)
      }
 
   temp_data[[ttt]] = partial_sample[ttt_index,]
   
       } # close ttt
-  
+   } # close pre ttt else
 
   
 # temp_est[[t]][tt,]  this is where the final estimates should go per strata
@@ -233,7 +242,7 @@ simu$beales$ns_sd[s,] = sd(all_strata_beales[1,])
 
 all_strata_cuts = do.call(rbind, sapply(temp_flow_cuts, unlist))
 
-simu$beales$s_flow_cuts = all_strata_cuts[selection,]
+simu$beales$s_flow_cuts[s,] = all_strata_cuts[selection,]
 
 if(quantile(all_strata_beales[selection,],c(0.025,0.975))[1] <= mean(all_strata_beales[selection,]) &
 quantile(all_strata_beales[selection,],c(0.025,0.975))[2] >= mean(all_strata_beales[selection,])){
@@ -241,6 +250,42 @@ simu$beales$s_hit_miss[s,] = 1
 } else {
 simu$beales$s_hit_miss[s,] = 0
 }
+
+if(quantile(all_strata_beales[1,],c(0.025,0.975))[1] <= mean(all_strata_beales[1,]) &
+quantile(all_strata_beales[1,],c(0.025,0.975))[2] >= mean(all_strata_beales[1,])){
+simu$beales$ns_hit_miss[s,] = 1
+} else {
+simu$beales$ns_hit_miss[s,] = 0
+}
+
+} # close s
+
+for(i in 1:BIGN){ # define the strata no for each simulation
+simu[[1]]$s_flow_cuts[i,dim(simu[[1]]$s_flow_cuts)[2]] =
+length(which(is.na(simu[[1]]$s_flow_cuts[i,-dim(simu[[1]]$s_flow_cuts)[2]]) == F))+1  
+  } # close i
+
+for(ii in 1:dim(simu[[1]]$s_flow_cuts)[2]){ # % each strata no preformed best
+if(ii > 1){
+  temp_index = which(simu[[1]]$s_flow_cuts[,(floor(samp_no/3))] == ii)
+for(iii in 1:ii-1){
+  results[[N]]$est[[1]]$s_flow_strata[[ii]][y,iii+2] = mean(simu[[1]]$s_flow_cuts[temp_index,iii])
+}} # close iii and if
+
+results[[N]]$est[[1]]$s_flow_strata[[ii]][y,1] = unique(partial$year)[y]
+results[[N]]$est[[1]]$s_flow_strata[[ii]][y,2] = length(which(simu[[1]]$s_flow_cuts[,(floor(samp_no/3))] == ii))/BIGN
+} # close ii 
+  
+
+results$ss$est$Beales$s_bias[y,2] = mean(simu$beales$s_bias)
+results$ss$est$Beales$s_sd[y,2] = mean(simu$beales$s_sd)
+results$ss$est$Beales$ns_bias[y,2] = mean(simu$beales$ns_bias)
+results$ss$est$Beales$ns_sd[y,2] = mean(simu$beales$ns_sd)
+results$ss$est$Beales$s_hit_miss[y,2] = mean(simu$beales$s_hit_miss)
+results$ss$est$Beales$ns_hit_miss[y,2] = mean(simu$beales$ns_hit_miss)
+} #close y
+# } # close N
+
 
 
 
